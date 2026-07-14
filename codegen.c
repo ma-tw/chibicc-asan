@@ -933,6 +933,23 @@ static void gen_expr(Node *node) {
     println("  mov %%rax, %%r10");
     println("  mov $%d, %%rax", fp);
     println("  call *%%r10");
+
+    if (node->lhs->kind == ND_VAR && !strcmp(node->lhs->var->name, "malloc")) {
+      println("  push %%rax");
+      println("  sub $8, %%rsp");
+      println("  call __trace_malloc@PLT");
+      println("  add $8, %%rsp");
+      println("  pop %%rax");
+    }
+    
+    if (node->lhs->kind == ND_VAR && !strcmp(node->lhs->var->name, "free")) {
+      println("  push %%rax");
+      println("  sub $8, %%rsp");
+      println("  call __trace_free@PLT");
+      println("  add $8, %%rsp");
+      println("  pop %%rax");
+    }
+
     println("  add $%d, %%rsp", stack_args * 8);
 
     depth -= stack_args;
