@@ -3,6 +3,7 @@
 **/*.o
 **/*.s
 **/a.out
+**/*.so
 /tmp*
 /thirdparty
 /chibicc
