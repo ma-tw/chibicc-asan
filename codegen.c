@@ -50,6 +50,25 @@ static void popf(int reg) {
   depth--;
 }
 
+static void trace_dereference(void) {
+  push();
+
+  bool aligned = depth % 2 == 0;
+  if (!aligned) {
+    println("  sub $8, %%rsp");
+    depth++;
+  }
+
+  println("  call __trace_dereference@PLT");
+
+  if (!aligned) {
+    println("  add $8, %%rsp");
+    depth--;
+  }
+
+  pop("%rax");
+}
+
 // Round up `n` to the nearest multiple of `align`. For instance,
 // align_to(5, 8) returns 8 and align_to(11, 8) returns 16.
 int align_to(int n, int align) {
@@ -152,6 +171,8 @@ static void gen_addr(Node *node) {
     return;
   case ND_DEREF:
     gen_expr(node->lhs);
+    if (opt_ftrace)
+      trace_dereference();
     return;
   case ND_COMMA:
     gen_expr(node->lhs);
@@ -767,7 +788,7 @@ static void gen_expr(Node *node) {
     return;
   }
   case ND_DEREF:
-    gen_expr(node->lhs);
+    gen_addr(node);
     load(node->ty);
     return;
   case ND_ADDR:
@@ -934,7 +955,8 @@ static void gen_expr(Node *node) {
     println("  mov $%d, %%rax", fp);
     println("  call *%%r10");
 
-    if (node->lhs->kind == ND_VAR && !strcmp(node->lhs->var->name, "malloc")) {
+    if (opt_ftrace && node->lhs->kind == ND_VAR &&
+        !strcmp(node->lhs->var->name, "malloc")) {
       println("  push %%rax");
       println("  sub $8, %%rsp");
       println("  call __trace_malloc@PLT");
@@ -942,7 +964,8 @@ static void gen_expr(Node *node) {
       println("  pop %%rax");
     }
     
-    if (node->lhs->kind == ND_VAR && !strcmp(node->lhs->var->name, "free")) {
+    if (opt_ftrace && node->lhs->kind == ND_VAR &&
+        !strcmp(node->lhs->var->name, "free")) {
       println("  push %%rax");
       println("  sub $8, %%rsp");
       println("  call __trace_free@PLT");

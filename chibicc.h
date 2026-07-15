@@ -454,4 +454,5 @@ bool file_exists(char *path);
 extern StringArray include_paths;
 extern bool opt_fpic;
 extern bool opt_fcommon;
+extern bool opt_ftrace;
 extern char *base_file;

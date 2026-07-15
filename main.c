@@ -7,6 +7,7 @@ typedef enum {
 StringArray include_paths;
 bool opt_fcommon = true;
 bool opt_fpic;
+bool opt_ftrace;
 
 static FileType opt_x;
 static StringArray opt_include;
@@ -157,6 +158,11 @@ static void parse_args(int argc, char **argv) {
 
     if (!strcmp(argv[i], "-fno-common")) {
       opt_fcommon = false;
+      continue;
+    }
+
+    if (!strcmp(argv[i], "-ftrace")) {
+      opt_ftrace = true;
       continue;
     }
 

@@ -7,3 +7,7 @@ void __trace_malloc() {
 void __trace_free() {
   printf("free called\n");
 }
+
+void __trace_dereference() {
+  printf("dereference called\n");
+}

@@ -9,7 +9,7 @@ TESTS=$(TEST_SRCS:.c=.exe)
 ASAN_TEST_SRCS=$(wildcard test/asan/*.c)
 ASAN_TESTS=$(ASAN_TEST_SRCS:.c=.exe)
 
-TRACE_MALLOC_LIB=helper/libtrace_malloc.so
+TRACE_LIB=helper/libtrace.so
 
 # Stage 1
 
@@ -18,10 +18,10 @@ chibicc: $(OBJS)
 
 $(OBJS): chibicc.h
 
-$(TRACE_MALLOC_LIB): helper/trace_malloc.c
+$(TRACE_LIB): helper/trace.c
 	$(CC) $(CFLAGS) -fPIC -shared -o $@ $<
 
-trace-malloc: $(TRACE_MALLOC_LIB)
+trace: $(TRACE_LIB)
 
 test/%.exe: chibicc test/%.c
 	./chibicc -Iinclude -Itest -c -o test/$*.o test/$*.c
@@ -31,9 +31,9 @@ test: $(TESTS)
 	for i in $^; do echo $$i; ./$$i || exit 1; echo; done
 	test/driver.sh ./chibicc
 
-test/asan/%.exe: chibicc test/asan/%.c $(TRACE_MALLOC_LIB)
-	./chibicc -Iinclude -Itest -c -o test/asan/$*.o test/asan/$*.c
-	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -ltrace_malloc \
+test/asan/%.exe: chibicc test/asan/%.c $(TRACE_LIB)
+	./chibicc -ftrace -Iinclude -Itest -c -o test/asan/$*.o test/asan/$*.c
+	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -ltrace \
 	  -Wl,-rpath,'$$ORIGIN/../../helper' -xc test/common
 
 test-asan: $(ASAN_TESTS)
@@ -63,7 +63,7 @@ test-stage2: $(TESTS:test/%=stage2/test/%)
 
 clean:
 	rm -rf chibicc tmp* $(TESTS) $(ASAN_TESTS) test/*.s test/*.exe \
-	  test/asan/*.s $(TRACE_MALLOC_LIB) stage2
+	  test/asan/*.s $(TRACE_LIB) stage2
 	find * -type f '(' -name '*~' -o -name '*.o' ')' -exec rm {} ';'
 
-.PHONY: test clean test-stage2 trace-malloc test-asan
+.PHONY: test clean test-stage2 trace test-asan

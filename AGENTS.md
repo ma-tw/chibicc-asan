@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-chibicc is a small C11 compiler organized by compilation stage. Top-level C files implement the compiler: `tokenize.c`, `preprocess.c`, `parse.c`, `type.c`, and `codegen.c`; `main.c` provides the driver, while `chibicc.h` contains shared declarations. Built-in headers live in `include/`. Feature tests are individual `test/*.c` programs, driver behavior is exercised by `test/driver.sh`, and larger compatibility checks live under `test/thirdparty/`. `helper/trace_malloc.c` provides allocation-tracing support. Generated binaries, objects, and `stage2/` output should not be committed.
+chibicc is a small C11 compiler organized by compilation stage. Top-level C files implement the compiler: `tokenize.c`, `preprocess.c`, `parse.c`, `type.c`, and `codegen.c`; `main.c` provides the driver, while `chibicc.h` contains shared declarations. Built-in headers live in `include/`. Feature tests are individual `test/*.c` programs, driver behavior is exercised by `test/driver.sh`, and larger compatibility checks live under `test/thirdparty/`. `helper/trace.c` provides instrumentation tracing support. Generated binaries, objects, and `stage2/` output should not be committed.
 
 ## Build, Test, and Development Commands
 
