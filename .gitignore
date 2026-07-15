@@ -8,4 +8,5 @@
 /thirdparty
 /chibicc
 /test/*.exe
+/test/asan/*.exe
 /stage2
