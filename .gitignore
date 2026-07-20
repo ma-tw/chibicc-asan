@@ -10,3 +10,4 @@
 /test/*.exe
 /test/asan/*.exe
 /stage2
+.vscode/*
