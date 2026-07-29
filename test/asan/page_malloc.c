@@ -4,19 +4,17 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <signal.h>
 
-void handle_sigsegv(int sig) {
-  char msg[] = "ASan: heap-use-after-free detected\n";
-  write(STDERR_FILENO, msg, sizeof(msg));
-  _exit(1);
+void g(int *p) {
+  p[42] = 0;
+}
+
+void f(int *p) {
+  g(p);
 }
 
 int main() {
-  struct sigaction act = { 0 };
-  sigemptyset(&act.sa_mask);
-  act.sa_handler = handle_sigsegv;
-  sigaction(SIGSEGV, &act, NULL);
+  asan_init();
   int *p = (int *) asan_page_malloc();
   int *q = (int *) asan_page_malloc();
   int i;
@@ -27,6 +25,6 @@ int main() {
   ASSERT(p[42], 42);
   ASSERT(q[42], 43);
   asan_page_free(p);
-  p[42] = 0;
+  f(p);
   return 0;
 }

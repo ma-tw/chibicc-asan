@@ -1525,11 +1525,15 @@ static void emit_text(Obj *prog) {
     println("  .text");
     println("  .type %s, @function", fn->name);
     println("%s:", fn->name);
+    println("  .cfi_startproc");
     current_fn = fn;
 
     // Prologue
     println("  push %%rbp");
+    println("  .cfi_def_cfa_offset 16");
+    println("  .cfi_offset %%rbp, -16");
     println("  mov %%rsp, %%rbp");
+    println("  .cfi_def_cfa_register %%rbp");
     println("  sub $%d, %%rsp", fn->stack_size);
     println("  mov %%rsp, %d(%%rbp)", fn->alloca_bottom->offset);
 
@@ -1618,7 +1622,9 @@ static void emit_text(Obj *prog) {
     println(".L.return.%s:", fn->name);
     println("  mov %%rbp, %%rsp");
     println("  pop %%rbp");
+    println("  .cfi_def_cfa %%rsp, 8");
     println("  ret");
+    println("  .cfi_endproc");
   }
 }
 
