@@ -16,9 +16,21 @@ int __asan_allocated_index;
 void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
   for (int i = 0; i < __asan_allocated_index; i++) {
     if (__asan_allocated_pages[i] <= info->si_addr &&
-        info->si_addr < __asan_allocated_pages[i] + 4096) {
-      char msg[] = "chibicc-ASan\n";
+        info->si_addr < __asan_allocated_pages[i] + 4096 * 3) {
+      char msg[] = "[chibicc-ASan]\n";
       write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      
+      if (info->si_addr < __asan_allocated_pages[i] + 4096) {
+        char msg[] = "buffer-underflow\n";
+        write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      } else if (info->si_addr < __asan_allocated_pages[i] + 4096 * 2) {
+        char msg[] = "use-after-free\n";
+        write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      } else {
+        char msg[] = "buffer-overflow\n";
+        write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      }
+
       void *frames[64];
       int frame_count = backtrace(frames, 64);
       backtrace_symbols_fd(frames, frame_count, STDERR_FILENO);
@@ -45,11 +57,13 @@ void asan_init() {
 }
 
 void *asan_page_malloc() {
-  void *ret = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (ret == MAP_FAILED) {
+  void *pages = mmap(NULL, 4096 * 3, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (pages == MAP_FAILED) {
     perror("mmap");
   }
-  __asan_allocated_pages[__asan_allocated_index++] = ret;
+  mprotect(pages + 4096, 4096, PROT_READ | PROT_WRITE);
+  __asan_allocated_pages[__asan_allocated_index++] = pages;
+  void *ret = pages + 4096;
   return ret;
 }
 
