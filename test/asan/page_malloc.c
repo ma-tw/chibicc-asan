@@ -13,9 +13,13 @@ void f(int *p) {
   g(p);
 }
 
+int *wrapper() {
+  return (int *) asan_page_malloc();
+}
+
 int main() {
   asan_init();
-  int *p = (int *) asan_page_malloc();
+  int *p = wrapper();
   int *q = (int *) asan_page_malloc();
   int i;
   for (i = 0; i < 4096 / 4; i++) {

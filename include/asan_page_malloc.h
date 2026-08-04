@@ -30,6 +30,15 @@ __asan_metadatum_t *__asan_rev[__ASAN_HASH_SIZE];
 
 int __asan_allocated_index;
 
+__asan_metadatum_t *find_asan_metadatum(void *ptr) {
+  for (__asan_metadatum_t *p = __asan_rev[HASH_ADDR(ptr - __ASAN_PAGE_SIZE)]; ; p = p -> next) {
+    if (p == NULL)
+      return NULL;
+    else if (p->allocated_page == ptr - __ASAN_PAGE_SIZE)
+      return p;
+  }
+}
+
 void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
   for (int i = 0; i < __asan_allocated_index; i++) {
     __asan_metadatum_t metadatum = __asan_metadata[i];
@@ -91,17 +100,12 @@ void *asan_page_malloc() {
 }
 
 void asan_page_free(void *ptr) {
-  for (__asan_metadatum_t *p = __asan_rev[HASH_ADDR(ptr - __ASAN_PAGE_SIZE)]; ; p = p->next) {
-    printf("%p\n", p);
-    if (p == NULL) {
-      abort();
-    } else {
-      if (p->allocated_page == ptr - __ASAN_PAGE_SIZE) {
-        int frame_count = backtrace(p->frames_free, __ASAN_MAX_FRAMES);
-        p->frame_count_free = frame_count;
-        break;
-      }
-    }
+  __asan_metadatum_t *metadatum = find_asan_metadatum(ptr);
+  if (metadatum == NULL)
+    abort();
+  else {
+    int frame_count = backtrace(metadatum->frames_free, __ASAN_MAX_FRAMES);
+    metadatum->frame_count_free = frame_count;
   }
   if (mprotect(ptr, __ASAN_PAGE_SIZE, PROT_NONE) == -1) {
     perror("mprotect");
