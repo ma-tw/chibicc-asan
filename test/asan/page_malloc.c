@@ -28,6 +28,7 @@ int main() {
   }
   ASSERT(p[42], 42);
   ASSERT(q[42], 43);
+  asan_page_free(p);
   // asan_page_free(p);
   // f(p); // use-after-free
   p[1024] = 123;  // buffer-overflow

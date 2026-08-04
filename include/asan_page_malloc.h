@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <stdbool.h>
 
 #define __ASAN_MAX_PAGES 1024
 #define __ASAN_MAX_FRAMES 64
@@ -22,6 +23,7 @@ typedef struct __asan_metadatum {
   void *frames_free[__ASAN_MAX_FRAMES];
   int frame_count_alloc;
   int frame_count_free;
+  bool is_freed;
   struct __asan_metadatum *next;
 } __asan_metadatum_t;
 __asan_metadatum_t __asan_metadata[__ASAN_MAX_PAGES];
@@ -41,25 +43,25 @@ __asan_metadatum_t *find_asan_metadatum(void *ptr) {
 
 void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
   for (int i = 0; i < __asan_allocated_index; i++) {
-    __asan_metadatum_t metadatum = __asan_metadata[i];
-    if (metadatum.allocated_page <= info->si_addr &&
-        info->si_addr < metadatum.allocated_page + __ASAN_PAGE_SIZE * 3) {
+    __asan_metadatum_t *metadatum = &__asan_metadata[i];
+    if (metadatum->allocated_page <= info->si_addr &&
+        info->si_addr < metadatum->allocated_page + __ASAN_PAGE_SIZE * 3) {
       PUTS_STDERR("[chibicc-ASan]");
       
-      if (info->si_addr < metadatum.allocated_page + __ASAN_PAGE_SIZE) {
+      if (info->si_addr < metadatum->allocated_page + __ASAN_PAGE_SIZE) {
         PUTS_STDERR("buffer-underflow");
-      } else if (info->si_addr < metadatum.allocated_page + __ASAN_PAGE_SIZE * 2) {
+      } else if (info->si_addr < metadatum->allocated_page + __ASAN_PAGE_SIZE * 2) {
         PUTS_STDERR("use-after-free");
       } else {
         PUTS_STDERR("buffer-overflow");
       }
 
       PUTS_STDERR("allocated at:");
-      backtrace_symbols_fd(metadatum.frames_alloc, metadatum.frame_count_alloc, STDERR_FILENO);
+      backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc, STDERR_FILENO);
 
-      if (metadatum.frame_count_free > 0) {
+      if (metadatum->is_freed) {
         PUTS_STDERR("freed at:");
-        backtrace_symbols_fd(metadatum.frames_free, metadatum.frame_count_free, STDERR_FILENO);
+        backtrace_symbols_fd(metadatum->frames_free, metadatum->frame_count_free, STDERR_FILENO);
       }
       _exit(sig + 128);
     }
@@ -103,13 +105,23 @@ void asan_page_free(void *ptr) {
   __asan_metadatum_t *metadatum = find_asan_metadatum(ptr);
   if (metadatum == NULL)
     abort();
-  else {
-    int frame_count = backtrace(metadatum->frames_free, __ASAN_MAX_FRAMES);
-    metadatum->frame_count_free = frame_count;
+
+  if (metadatum->is_freed) {
+    PUTS_STDERR("[chibicc-ASan]");
+    PUTS_STDERR("double-free");
+    PUTS_STDERR("allocated at:");
+    backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc, STDERR_FILENO);
+    PUTS_STDERR("freed at:");
+    backtrace_symbols_fd(metadatum->frames_free, metadatum->frame_count_free, STDERR_FILENO);
+    abort();
   }
+
+  int frame_count = backtrace(metadatum->frames_free, __ASAN_MAX_FRAMES);
+  metadatum->frame_count_free = frame_count;
   if (mprotect(ptr, __ASAN_PAGE_SIZE, PROT_NONE) == -1) {
     perror("mprotect");
   }
+  metadatum->is_freed = true;
 }
 
 #endif
