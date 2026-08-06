@@ -13,14 +13,12 @@ void f(int *p) {
   g(p);
 }
 
-int *wrapper() {
-  return (int *) asan_page_malloc();
-}
-
 int main() {
   asan_init();
-  int *p = wrapper();
-  int *q = (int *) asan_page_malloc();
+  int *p = asan_malloc(4096 + 4);
+  int *q = asan_malloc(4096);
+  printf("%p\n", p);
+  printf("%d\n", find_asan_metadatum(p)->num_pages);
   int i;
   for (i = 0; i < 4096 / 4; i++) {
     p[i] = i;
@@ -28,8 +26,7 @@ int main() {
   }
   ASSERT(p[42], 42);
   ASSERT(q[42], 43);
-  asan_page_free(p);
-  // asan_page_free(p);
+  asan_free(p);
   // f(p); // use-after-free
   p[1024] = 123;  // buffer-overflow
   // p[-1] = 123; // buffer-underflow
