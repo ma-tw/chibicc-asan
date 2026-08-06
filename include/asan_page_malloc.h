@@ -87,13 +87,15 @@ void *asan_page_malloc() {
     perror("mmap");
   }
   mprotect(pages + __ASAN_PAGE_SIZE, __ASAN_PAGE_SIZE, PROT_READ | PROT_WRITE);
-  __asan_metadata[__asan_allocated_index].allocated_page = pages;
-  int frame_count = backtrace(__asan_metadata[__asan_allocated_index].frames_alloc, __ASAN_MAX_FRAMES);
-  __asan_metadata[__asan_allocated_index].frame_count_alloc = frame_count;
+
+  __asan_metadatum_t *metadatum = &__asan_metadata[__asan_allocated_index];
+  metadatum->allocated_page = pages;
+  int frame_count = backtrace(metadatum->frames_alloc, __ASAN_MAX_FRAMES);
+  metadatum->frame_count_alloc = frame_count;
 
   __asan_metadatum_t *next = __asan_rev[HASH_ADDR(pages)];
   
-  __asan_rev[HASH_ADDR(pages)] = &__asan_metadata[__asan_allocated_index];
+  __asan_rev[HASH_ADDR(pages)] = metadatum;
   __asan_rev[HASH_ADDR(pages)]->next = next;
     
   __asan_allocated_index++;
