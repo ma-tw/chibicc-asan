@@ -8,20 +8,20 @@
 #include <unistd.h>
 #include <execinfo.h>
 #include <stdbool.h>
+#include <sys/tree.h>
 
 #define __ASAN_MAX_PAGES 1024
 #define __ASAN_MAX_FRAMES 64
 #define __ASAN_PAGE_SIZE sysconf(_SC_PAGE_SIZE)
-#define __ASAN_HASH_SIZE 65536
 
 #define PUTS_STDERR(s) write(STDERR_FILENO, (s "\n"), sizeof(s "\n") - 1)
-#define HASH_ADDR(addr) (unsigned long) (addr) % __ASAN_HASH_SIZE
 #define DIV_CEIL(x, y) (((x) + (y) - 1) / (y))
 
 typedef struct __asan_metadatum {
   void *allocated_page_start; // ガードページも含む
   void *begin;                // 有効アドレスの先頭
   int num_pages;              // ガードページも含む
+  int size;
   void *frames_alloc[__ASAN_MAX_FRAMES];
   void *frames_free[__ASAN_MAX_FRAMES];
   int frame_count_alloc;
@@ -31,17 +31,42 @@ typedef struct __asan_metadatum {
 } __asan_metadatum_t;
 __asan_metadatum_t __asan_metadata[__ASAN_MAX_PAGES];
 
-__asan_metadatum_t *__asan_rev[__ASAN_HASH_SIZE];
+typedef struct __asan_node {
+  RB_ENTRY(__asan_node) entry;
+  __asan_metadatum_t *key;
+} __asan_node_t;
+
+int __asan_cmp(__asan_node_t *a, __asan_node_t *b) {
+  return (a->key->allocated_page_start > b->key->allocated_page_start) - (a->key->allocated_page_start < b->key->allocated_page_start);
+}
+
+RB_HEAD(__asan_tree, __asan_node) __asan_head = RB_INITIALIZER(&__asan_head);
+RB_PROTOTYPE(__asan_tree, __asan_node, entry, __asan_cmp);
+RB_GENERATE(__asan_tree, __asan_node, entry, __asan_cmp);
 
 int __asan_allocated_index;
 
 __asan_metadatum_t *find_asan_metadatum(void *ptr) {
-  for (__asan_metadatum_t *p = __asan_rev[HASH_ADDR(ptr)]; ; p = p -> next) {
-    if (p == NULL)
-      return NULL;
-    else if (p->begin == ptr)
-      return p;
+  __asan_node_t find, *res_node;
+  find.key = malloc(sizeof(__asan_metadatum_t));
+  find.key->allocated_page_start = ptr;
+  res_node = RB_NFIND(__asan_tree, &__asan_head, &find);  // lower_bound に相当
+
+  __asan_metadatum_t *ret;
+  if (res_node == NULL) {
+    // 最大要素が答え
+    ret = RB_MAX(__asan_tree, &__asan_head)->key;
+  } else if (res_node->key->allocated_page_start == ptr) {
+    // ptr 自身が先頭
+    ret = res_node->key;
+  } else {
+    ret = RB_PREV(__asan_tree, &__asan_head, res_node)->key;
   }
+  
+  if (ptr < ret->begin || ptr >= ret->begin + ret->size)
+    abort();
+
+  return ret;
 }
 
 void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
@@ -77,7 +102,7 @@ void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
 void asan_init() {
   struct sigaction act = { 0 };
   sigemptyset(&act.sa_mask);
-  act.sa_handler = handle_sigsegv;
+  act.sa_sigaction = handle_sigsegv;
   act.sa_flags = SA_SIGINFO;
   sigaction(SIGSEGV, &act, NULL);
 
@@ -91,8 +116,10 @@ void *asan_malloc(int size) {
     perror("mmap");
   }
   mprotect(pages + __ASAN_PAGE_SIZE, __ASAN_PAGE_SIZE * num_valid_pages, PROT_READ | PROT_WRITE);
+
   __asan_metadatum_t *metadatum = &__asan_metadata[__asan_allocated_index];
   metadatum->allocated_page_start = pages;
+  metadatum->size = size;
   metadatum->num_pages = num_valid_pages + 2;
   int frame_count = backtrace(metadatum->frames_alloc, __ASAN_MAX_FRAMES);
   metadatum->frame_count_alloc = frame_count;
@@ -101,17 +128,17 @@ void *asan_malloc(int size) {
   void *ret = pages + __ASAN_PAGE_SIZE + (__ASAN_PAGE_SIZE - size % __ASAN_PAGE_SIZE) % __ASAN_PAGE_SIZE;
   metadatum->begin = ret;
 
-  __asan_metadatum_t *next = __asan_rev[HASH_ADDR(ret)];
-  __asan_rev[HASH_ADDR(ret)] = metadatum;
-  __asan_rev[HASH_ADDR(ret)]->next = next;
+  printf("malloc %p\n", metadatum);
+
+  __asan_node_t *node = malloc(sizeof(__asan_node_t));
+  node->key = metadatum;
+  RB_INSERT(__asan_tree, &__asan_head, node);
 
   return ret;
 }
 
 void asan_free(void *ptr) {
   __asan_metadatum_t *metadatum = find_asan_metadatum(ptr);
-  if (metadatum == NULL)
-    abort();
 
   if (metadatum->is_freed) {
     PUTS_STDERR("[chibicc-ASan]");

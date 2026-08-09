@@ -18,6 +18,7 @@ int main() {
   int *p = asan_malloc(4096 + 4);
   int *q = asan_malloc(4096);
   printf("%p\n", p);
+  printf("%p\n", find_asan_metadatum(p));
   printf("%d\n", find_asan_metadatum(p)->num_pages);
   int i;
   for (i = 0; i < 4096 / 4; i++) {
