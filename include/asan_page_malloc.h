@@ -29,7 +29,6 @@ typedef struct __asan_metadatum {
   bool is_freed;
   struct __asan_metadatum *next;
 } __asan_metadatum_t;
-__asan_metadatum_t __asan_metadata[__ASAN_MAX_PAGES];
 
 typedef struct __asan_node {
   RB_ENTRY(__asan_node) entry;
@@ -43,8 +42,6 @@ int __asan_cmp(__asan_node_t *a, __asan_node_t *b) {
 RB_HEAD(__asan_tree, __asan_node) __asan_head = RB_INITIALIZER(&__asan_head);
 RB_PROTOTYPE(__asan_tree, __asan_node, entry, __asan_cmp);
 RB_GENERATE(__asan_tree, __asan_node, entry, __asan_cmp);
-
-int __asan_allocated_index;
 
 __asan_metadatum_t *find_asan_metadatum(void *ptr) {
   __asan_node_t find, *res_node;
@@ -70,8 +67,9 @@ __asan_metadatum_t *find_asan_metadatum(void *ptr) {
 }
 
 void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
-  for (int i = 0; i < __asan_allocated_index; i++) {
-    __asan_metadatum_t *metadatum = &__asan_metadata[i];
+  __asan_node_t *node;
+  RB_FOREACH(node, __asan_tree, &__asan_head) {
+    __asan_metadatum_t *metadatum = node->key;
     if (metadatum->allocated_page_start <= info->si_addr &&
         info->si_addr < metadatum->allocated_page_start + __ASAN_PAGE_SIZE * metadatum->num_pages) {
       PUTS_STDERR("[chibicc-ASan]");
@@ -105,8 +103,6 @@ void asan_init() {
   act.sa_sigaction = handle_sigsegv;
   act.sa_flags = SA_SIGINFO;
   sigaction(SIGSEGV, &act, NULL);
-
-  __asan_allocated_index = 0;
 }
 
 void *asan_malloc(int size) {
@@ -117,14 +113,13 @@ void *asan_malloc(int size) {
   }
   mprotect(pages + __ASAN_PAGE_SIZE, __ASAN_PAGE_SIZE * num_valid_pages, PROT_READ | PROT_WRITE);
 
-  __asan_metadatum_t *metadatum = &__asan_metadata[__asan_allocated_index];
+  __asan_metadatum_t *metadatum = malloc(sizeof(__asan_metadatum_t));
   metadatum->allocated_page_start = pages;
   metadatum->size = size;
   metadatum->num_pages = num_valid_pages + 2;
   int frame_count = backtrace(metadatum->frames_alloc, __ASAN_MAX_FRAMES);
   metadatum->frame_count_alloc = frame_count;
-  __asan_allocated_index++;
-
+  
   void *ret = pages + __ASAN_PAGE_SIZE + (__ASAN_PAGE_SIZE - size % __ASAN_PAGE_SIZE) % __ASAN_PAGE_SIZE;
   metadatum->begin = ret;
 

@@ -27,9 +27,9 @@ int main() {
   }
   ASSERT(p[42], 42);
   ASSERT(q[42], 43);
-  asan_free(p);
+  asan_free(p + 123);
   // f(p); // use-after-free
-  p[1024] = 123;  // buffer-overflow
-  // p[-1] = 123; // buffer-underflow
+  // p[1025] = 123;  // buffer-overflow
+  // p[-4096] = 123; // buffer-underflow
   return 0;
 }
