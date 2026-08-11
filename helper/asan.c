@@ -64,7 +64,7 @@ static void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
       PUTS_STDERR("-------- traces: --------");
       int traces_start = (metadatum->trace_head + __ASAN_MAX_TRACES - metadatum->trace_count) % __ASAN_MAX_TRACES;
       for (int i = 0; i < metadatum->trace_count; i++) {
-        fprintf(stderr, "%ld\n", metadatum->traces[(traces_start + i) % __ASAN_MAX_TRACES] - metadatum->begin);
+        fprintf(stderr, "ptr + %ld\n", metadatum->traces[(traces_start + i) % __ASAN_MAX_TRACES] - metadatum->begin);
       }
       _exit(sig + 128);
     }
