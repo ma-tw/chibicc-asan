@@ -33,11 +33,11 @@ test: $(TESTS)
 
 test/asan/%.exe: chibicc test/asan/%.c $(TRACE_LIB)
 	./chibicc -ftrace -Iinclude -Itest -c -o test/asan/$*.o test/asan/$*.c
-	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -ltrace \
+	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -ltrace -lasan_page_malloc \
 	  -Wl,-rpath,'$$ORIGIN/../../helper' -xc test/common
 
 test-asan: $(ASAN_TESTS)
-	for i in $^; do echo $$i; ./$$i || exit 1; echo; done
+	for i in $^; do echo $$i; LD_PRELOAD=./helper/libasan_page_malloc.so ./$$i || exit 1; echo; done
 
 test-all: test test-stage2
 
