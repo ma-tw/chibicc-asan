@@ -43,7 +43,7 @@ static void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
     __asan_metadatum_t *metadatum = node->key;
     if (metadatum->allocated_page_start <= info->si_addr &&
         info->si_addr < metadatum->allocated_page_start + __ASAN_PAGE_SIZE * metadatum->num_pages) {
-      PUTS_STDERR("[chibicc-ASan]");
+      PUTS_STDERR("======== [chibicc-ASan] ========");
 
       if (info->si_addr < metadatum->allocated_page_start + __ASAN_PAGE_SIZE) {
         PUTS_STDERR("buffer-underflow");
@@ -53,15 +53,15 @@ static void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
         PUTS_STDERR("buffer-overflow");
       }
 
-      PUTS_STDERR("allocated at:");
+      PUTS_STDERR("-------- allocated at: --------");
       backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc, STDERR_FILENO);
 
       if (metadatum->is_freed) {
-        PUTS_STDERR("freed at:");
+        PUTS_STDERR("-------- freed at: --------");
         backtrace_symbols_fd(metadatum->frames_free, metadatum->frame_count_free, STDERR_FILENO);
       }
 
-      PUTS_STDERR("traces:");
+      PUTS_STDERR("-------- traces: --------");
       int traces_start = (metadatum->trace_head + __ASAN_MAX_TRACES - metadatum->trace_count) % __ASAN_MAX_TRACES;
       for (int i = 0; i < metadatum->trace_count; i++) {
         fprintf(stderr, "%ld\n", metadatum->traces[(traces_start + i) % __ASAN_MAX_TRACES] - metadatum->begin);
