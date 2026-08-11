@@ -94,8 +94,6 @@ void *asan_malloc(size_t size) {
   void *ret = pages + __ASAN_PAGE_SIZE + (__ASAN_PAGE_SIZE - size % __ASAN_PAGE_SIZE) % __ASAN_PAGE_SIZE;
   metadatum->begin = ret;
 
-  printf("malloc %p\n", metadatum);
-
   __asan_node_t *node = (__asan_node_t *) (heap_for_metadata + sizeof(__asan_metadatum_t));
   node->key = metadatum;
   RB_INSERT(__asan_tree, &__asan_head, node);
@@ -113,7 +111,7 @@ void asan_free(void *ptr) {
     backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc, STDERR_FILENO);
     PUTS_STDERR("freed at:");
     backtrace_symbols_fd(metadatum->frames_free, metadatum->frame_count_free, STDERR_FILENO);
-    abort();
+    _exit(128 + SIGABRT);
   }
 
   int frame_count = backtrace(metadatum->frames_free, __ASAN_MAX_FRAMES);

@@ -24,10 +24,10 @@ int main() {
   }
   ASSERT(p[42], 42);
   ASSERT(q[42], 43);
-  free(p + 123);
+  free(p);
   // f(p); // use-after-free
-  p[1025] = 123;  // buffer-overflow
-  // p[-4096] = 123; // buffer-underflow
+  // p[1025] = 123;  // buffer-overflow
+  // p[-1024] = 123; // buffer-underflow
 
   printf("OK\n");
   return 0;
