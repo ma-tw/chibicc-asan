@@ -18,7 +18,7 @@ chibicc: $(OBJS)
 
 $(OBJS): chibicc.h
 
-$(ASAN_LIB): helper/asan.c include/asan.h
+$(ASAN_LIB): helper/asan.c helper/asan.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -fPIC -shared -Iinclude -o $@ $<
 
 asan: $(ASAN_LIB)
