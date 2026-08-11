@@ -14,8 +14,8 @@ void f(int *p) {
 }
 
 int main() {
-  int *p = asan_malloc(4096 + 4);
-  int *q = asan_malloc(4096);
+  int *p = malloc(4096 + 4);
+  int *q = malloc(4096);
   printf("%p\n", p);
   int i;
   for (i = 0; i < 4096 / 4; i++) {
@@ -24,9 +24,11 @@ int main() {
   }
   ASSERT(p[42], 42);
   ASSERT(q[42], 43);
-  asan_free(p + 123);
+  free(p + 123);
   // f(p); // use-after-free
-  // p[1025] = 123;  // buffer-overflow
+  p[1025] = 123;  // buffer-overflow
   // p[-4096] = 123; // buffer-underflow
+
+  printf("OK\n");
   return 0;
 }
