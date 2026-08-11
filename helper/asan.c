@@ -27,7 +27,10 @@ static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
     // ptr 自身が先頭
     ret = res_node->key;
   } else {
-    ret = RB_PREV(__asan_tree, &__asan_head, res_node)->key;
+    __asan_node_t *prev = RB_PREV(__asan_tree, &__asan_head, res_node);
+    if (prev == NULL)
+      return NULL;
+    ret = prev->key;
   }
 
   if (ptr < ret->allocated_page_start || ptr >= ret->allocated_page_start + __ASAN_PAGE_SIZE * (ret->num_pages)) {
@@ -111,6 +114,9 @@ void *asan_malloc(size_t size) {
 }
 
 void asan_free(void *ptr) {
+  if (ptr == NULL)
+    return;
+
   __asan_metadatum_t *metadatum = find_asan_metadatum(ptr);
 
   if (metadatum->is_freed) {
