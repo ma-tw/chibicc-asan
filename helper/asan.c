@@ -1,4 +1,4 @@
-#include "asan_page_malloc.h"
+#include "asan.h"
 
 static int __asan_cmp(__asan_node_t *a, __asan_node_t *b) {
   return (a->key->allocated_page_start > b->key->allocated_page_start) - (a->key->allocated_page_start < b->key->allocated_page_start);
@@ -9,10 +9,15 @@ RB_PROTOTYPE(__asan_tree, __asan_node, entry, __asan_cmp);
 RB_GENERATE(__asan_tree, __asan_node, entry, __asan_cmp);
 
 static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
+  if (RB_EMPTY(&__asan_head)) {
+    return NULL;
+  }
   __asan_node_t find, *res_node;
   find.key = mmap(NULL, __ASAN_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   find.key->allocated_page_start = ptr;
   res_node = RB_NFIND(__asan_tree, &__asan_head, &find);  // lower_bound に相当
+
+  munmap(find.key, __ASAN_PAGE_SIZE);
 
   __asan_metadatum_t *ret;
   if (res_node == NULL) {
@@ -24,12 +29,10 @@ static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
   } else {
     ret = RB_PREV(__asan_tree, &__asan_head, res_node)->key;
   }
-  
-  if (ptr < ret->begin || ptr >= ret->begin + ret->size) {
-    abort();
-  }
 
-  munmap(find.key, __ASAN_PAGE_SIZE);
+  if (ptr < ret->allocated_page_start || ptr >= ret->allocated_page_start + __ASAN_PAGE_SIZE * (ret->num_pages)) {
+    return NULL;
+  }
 
   return ret;
 }
@@ -41,7 +44,7 @@ static void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
     if (metadatum->allocated_page_start <= info->si_addr &&
         info->si_addr < metadatum->allocated_page_start + __ASAN_PAGE_SIZE * metadatum->num_pages) {
       PUTS_STDERR("[chibicc-ASan]");
-      
+
       if (info->si_addr < metadatum->allocated_page_start + __ASAN_PAGE_SIZE) {
         PUTS_STDERR("buffer-underflow");
       } else if (info->si_addr < metadatum->allocated_page_start + __ASAN_PAGE_SIZE * (metadatum->num_pages - 1)) {
@@ -56,6 +59,12 @@ static void handle_sigsegv(int sig, siginfo_t *info, void *ucontext) {
       if (metadatum->is_freed) {
         PUTS_STDERR("freed at:");
         backtrace_symbols_fd(metadatum->frames_free, metadatum->frame_count_free, STDERR_FILENO);
+      }
+
+      PUTS_STDERR("traces:");
+      int traces_start = (metadatum->trace_head + __ASAN_MAX_TRACES - metadatum->trace_count) % __ASAN_MAX_TRACES;
+      for (int i = 0; i < metadatum->trace_count; i++) {
+        fprintf(stderr, "%ld\n", metadatum->traces[(traces_start + i) % __ASAN_MAX_TRACES] - metadatum->begin);
       }
       _exit(sig + 128);
     }
@@ -90,7 +99,7 @@ void *asan_malloc(size_t size) {
   metadatum->num_pages = num_valid_pages + 2;
   int frame_count = backtrace(metadatum->frames_alloc, __ASAN_MAX_FRAMES);
   metadatum->frame_count_alloc = frame_count;
-  
+
   void *ret = pages + __ASAN_PAGE_SIZE + (__ASAN_PAGE_SIZE - size % __ASAN_PAGE_SIZE) % __ASAN_PAGE_SIZE;
   metadatum->begin = ret;
 
@@ -120,4 +129,16 @@ void asan_free(void *ptr) {
     perror("mprotect");
   }
   metadatum->is_freed = true;
+}
+
+void __trace_dereference(void *addr) {
+  __asan_metadatum_t *metadatum;
+  if ((metadatum = find_asan_metadatum(addr)) != NULL) {
+    metadatum->traces[metadatum->trace_head] = addr;
+    metadatum->trace_head = (metadatum->trace_head + 1) % __ASAN_MAX_TRACES;
+
+    if (metadatum->trace_count < __ASAN_MAX_TRACES) {
+      metadatum->trace_count++;
+    }
+  }
 }

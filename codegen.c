@@ -160,6 +160,25 @@ static void gen_addr(Node *node) {
     return;
   case ND_DEREF:
     gen_expr(node->lhs);
+    if (opt_ftrace) {
+      push();
+
+      bool aligned = depth % 2 == 0;
+      if (!aligned) {
+        println("  sub $8, %%rsp");
+        depth++;
+      }
+
+      println("  mov %%rax, %%rdi");
+      println("  call __trace_dereference@PLT");
+
+      if (!aligned) {
+        println("  add $8, %%rsp");
+        depth--;
+      }
+
+      pop("%rax");
+    }
     return;
   case ND_COMMA:
     gen_expr(node->lhs);

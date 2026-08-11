@@ -9,7 +9,7 @@ TESTS=$(TEST_SRCS:.c=.exe)
 ASAN_TEST_SRCS=$(wildcard test/asan/*.c)
 ASAN_TESTS=$(ASAN_TEST_SRCS:.c=.exe)
 
-TRACE_LIB=helper/libtrace.so
+ASAN_LIB=helper/libasan.so
 
 # Stage 1
 
@@ -18,10 +18,10 @@ chibicc: $(OBJS)
 
 $(OBJS): chibicc.h
 
-$(TRACE_LIB): helper/trace.c
-	$(CC) $(CFLAGS) -fPIC -shared -o $@ $<
+$(ASAN_LIB): helper/asan.c include/asan.h
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -fPIC -shared -Iinclude -o $@ $<
 
-trace: $(TRACE_LIB)
+asan: $(ASAN_LIB)
 
 test/%.exe: chibicc test/%.c
 	./chibicc -Iinclude -Itest -c -o test/$*.o test/$*.c
@@ -31,13 +31,13 @@ test: $(TESTS)
 	for i in $^; do echo $$i; ./$$i || exit 1; echo; done
 	test/driver.sh ./chibicc
 
-test/asan/%.exe: chibicc test/asan/%.c $(TRACE_LIB)
+test/asan/%.exe: chibicc test/asan/%.c $(ASAN_LIB)
 	./chibicc -ftrace -Iinclude -Itest -c -o test/asan/$*.o test/asan/$*.c
-	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -ltrace -lasan_page_malloc \
+	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -lasan \
 	  -Wl,-rpath,'$$ORIGIN/../../helper' -xc test/common
 
 test-asan: $(ASAN_TESTS)
-	for i in $^; do echo $$i; LD_PRELOAD=./helper/libasan_page_malloc.so ./$$i || exit 1; echo; done
+	for i in $^; do echo $$i; LD_PRELOAD=./helper/libasan.so ./$$i || exit 1; echo; done
 
 test-all: test test-stage2
 
@@ -63,7 +63,7 @@ test-stage2: $(TESTS:test/%=stage2/test/%)
 
 clean:
 	rm -rf chibicc tmp* $(TESTS) $(ASAN_TESTS) test/*.s test/*.exe \
-	  test/asan/*.s $(TRACE_LIB) stage2
+	  test/asan/*.s $(ASAN_LIB) stage2
 	find * -type f '(' -name '*~' -o -name '*.o' ')' -exec rm {} ';'
 
-.PHONY: test clean test-stage2 trace test-asan
+.PHONY: asan test clean test-stage2 test-asan
