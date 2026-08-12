@@ -40,6 +40,7 @@ test-asan: $(ASAN_TESTS)
 	./test/asan/practical.exe normal
 	! ./test/asan/practical.exe overflow
 	! ./test/asan/practical.exe underflow
+	! ./test/asan/practical.exe partial-overflow
 	! ./test/asan/practical.exe uaf
 	! ./test/asan/practical.exe double-free
 

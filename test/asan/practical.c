@@ -59,6 +59,14 @@ static void underflow(void)
     p[-1] = 'X';
 }
 
+static void partial_overflow(void)
+{
+    char *buf = malloc(5);
+    volatile int *p = (int *)(buf + 3);
+
+    *p = 1;
+}
+
 static void use_after_free(void)
 {
     struct message *msg = message_create("hello");
@@ -82,7 +90,7 @@ int main(int argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr,
-                "usage: %s normal|overflow|underflow|uaf|double-free\n",
+                "usage: %s normal|overflow|underflow|partial-overflow|uaf|double-free\n",
                 argv[0]);
         return 1;
     }
@@ -93,6 +101,8 @@ int main(int argc, char **argv)
         overflow();
     else if (strcmp(argv[1], "underflow") == 0)
         underflow();
+    else if (strcmp(argv[1], "partial-overflow") == 0)
+        partial_overflow();
     else if (strcmp(argv[1], "uaf") == 0)
         use_after_free();
     else if (strcmp(argv[1], "double-free") == 0)

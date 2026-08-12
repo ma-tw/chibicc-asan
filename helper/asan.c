@@ -123,7 +123,7 @@ void __asan_free(void *ptr) {
   __asan_quar_head = (__asan_quar_head + 1) % __ASAN_QUAR_SIZE;
 }
 
-void __trace_dereference(void *addr) {
+void __asan_check(void *addr, size_t access_size) {
   __asan_metadatum_t *metadatum;
   if ((metadatum = find_asan_metadatum(addr)) != NULL) {
     metadatum->traces[metadatum->trace_head] = addr;
@@ -137,9 +137,12 @@ void __trace_dereference(void *addr) {
       show_asan_info_and_exit(metadatum, __AT_UAF);
     }
 
-    if (addr < metadatum->raw_begin + __ASAN_REDZONE_SIZE) {
+    if (addr < metadatum->begin) {
       show_asan_info_and_exit(metadatum, __AT_BUF);
-    } else if (addr >= metadatum->raw_begin + __ASAN_REDZONE_SIZE + metadatum->size) {
+    }
+
+    size_t offset = addr - metadatum->begin;
+    if (offset >= metadatum->size || access_size > metadatum->size - offset) {
       show_asan_info_and_exit(metadatum, __AT_BOF);
     }
   }

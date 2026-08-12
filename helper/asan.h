@@ -44,6 +44,6 @@ void *__asan_malloc(size_t size);
 
 void __asan_free(void *ptr);
 
-void __trace_dereference(void *addr);
+void __asan_check(void *addr, size_t access_size);
 
 #endif

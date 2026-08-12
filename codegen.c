@@ -170,7 +170,8 @@ static void gen_addr(Node *node) {
       }
 
       println("  mov %%rax, %%rdi");
-      println("  call __trace_dereference@PLT");
+      println("  mov $%d, %%rsi", node->ty->size);
+      println("  call __asan_check@PLT");
 
       if (!aligned) {
         println("  add $8, %%rsp");
