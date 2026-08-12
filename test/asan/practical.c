@@ -51,6 +51,14 @@ static void overflow(void)
     message_destroy(msg);
 }
 
+static void underflow(void)
+{
+    struct message *msg = message_create("hello");
+
+    volatile char *p = msg->data;
+    p[-1] = 'X';
+}
+
 static void use_after_free(void)
 {
     struct message *msg = message_create("hello");
@@ -74,7 +82,7 @@ int main(int argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr,
-                "usage: %s normal|overflow|uaf|double-free\n",
+                "usage: %s normal|overflow|underflow|uaf|double-free\n",
                 argv[0]);
         return 1;
     }
@@ -83,6 +91,8 @@ int main(int argc, char **argv)
         normal();
     else if (strcmp(argv[1], "overflow") == 0)
         overflow();
+    else if (strcmp(argv[1], "underflow") == 0)
+        underflow();
     else if (strcmp(argv[1], "uaf") == 0)
         use_after_free();
     else if (strcmp(argv[1], "double-free") == 0)
