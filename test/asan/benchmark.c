@@ -9,7 +9,7 @@ long long get_time_ns(void) {
   return (long long) ts.tv_sec * 1000000000 + (long long) ts.tv_nsec;
 }
 
-#define MATRIX_SIZE 500 
+#define MATRIX_SIZE 100 
 
 void matmul(int **a, int **b, int **res) {
   for (int i = 0; i < MATRIX_SIZE; i++) {
