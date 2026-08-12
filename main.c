@@ -7,7 +7,7 @@ typedef enum {
 StringArray include_paths;
 bool opt_fcommon = true;
 bool opt_fpic;
-bool opt_ftrace;
+bool opt_fsanitize_address;
 
 static FileType opt_x;
 static StringArray opt_include;
@@ -161,8 +161,8 @@ static void parse_args(int argc, char **argv) {
       continue;
     }
 
-    if (!strcmp(argv[i], "-ftrace")) {
-      opt_ftrace = true;
+    if (!strcmp(argv[i], "-fsanitize=address")) {
+      opt_fsanitize_address = true;
       continue;
     }
 
@@ -629,6 +629,18 @@ static void run_linker(StringArray *inputs, char *output) {
 
   char *libpath = find_libpath();
   char *gcc_libpath = find_gcc_libpath();
+  char *asan_libdir = NULL;
+
+  if (opt_fsanitize_address) {
+    char exe[4096];
+    ssize_t len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (len < 0)
+      error("cannot find chibicc executable: %s", strerror(errno));
+    if (len == sizeof(exe) - 1)
+      error("chibicc executable path is too long");
+    exe[len] = '\0';
+    asan_libdir = format("%s/helper", dirname(exe));
+  }
 
   if (opt_shared) {
     strarray_push(&arr, format("%s/crti.o", libpath));
@@ -639,6 +651,8 @@ static void run_linker(StringArray *inputs, char *output) {
     strarray_push(&arr, format("%s/crtbegin.o", gcc_libpath));
   }
 
+  if (asan_libdir)
+    strarray_push(&arr, format("-L%s", asan_libdir));
   strarray_push(&arr, format("-L%s", gcc_libpath));
   strarray_push(&arr, "-L/usr/lib/x86_64-linux-gnu");
   strarray_push(&arr, "-L/usr/lib64");
@@ -659,6 +673,12 @@ static void run_linker(StringArray *inputs, char *output) {
 
   for (int i = 0; i < inputs->len; i++)
     strarray_push(&arr, inputs->data[i]);
+
+  if (asan_libdir) {
+    strarray_push(&arr, "-rpath");
+    strarray_push(&arr, asan_libdir);
+    strarray_push(&arr, "-lasan");
+  }
 
   if (opt_static) {
     strarray_push(&arr, "--start-group");

@@ -94,7 +94,7 @@ static void gen_addr(Node *node) {
     }
 
     char *name = node->var->name;
-    if (opt_ftrace && node->ty->kind == TY_FUNC) {
+    if (opt_fsanitize_address && node->ty->kind == TY_FUNC) {
       if (!strcmp(name, "malloc"))
         name = "asan_malloc";
       else if (!strcmp(name, "free"))
@@ -160,7 +160,7 @@ static void gen_addr(Node *node) {
     return;
   case ND_DEREF:
     gen_expr(node->lhs);
-    if (opt_ftrace) {
+    if (opt_fsanitize_address) {
       push();
 
       bool aligned = depth % 2 == 0;

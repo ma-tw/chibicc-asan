@@ -13,8 +13,8 @@ ASAN_LIB=helper/libasan.so
 
 # Stage 1
 
-chibicc: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+chibicc: $(OBJS) $(ASAN_LIB)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 $(OBJS): chibicc.h
 
@@ -32,17 +32,16 @@ test: $(TESTS)
 	test/driver.sh ./chibicc
 
 test/asan/%.exe: chibicc test/asan/%.c $(ASAN_LIB)
-	./chibicc -ftrace -Iinclude -Itest -c -o test/asan/$*.o test/asan/$*.c
-	$(CC) -pthread -o $@ test/asan/$*.o -Lhelper -lasan \
-	  -Wl,-rpath,'$$ORIGIN/../../helper' -xc test/common
+	./chibicc -fsanitize=address -Iinclude -Itest -o $@ \
+	  test/asan/$*.c -xc test/common
 
 test-asan: $(ASAN_TESTS)
-	for i in $(filter-out test/asan/practical.exe,$^); do echo $$i; LD_PRELOAD=./helper/libasan.so ./$$i || exit 1; echo; done
-	LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe normal
-	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe overflow
-	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe underflow
-	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe uaf
-	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe double-free
+	for i in $(filter-out test/asan/practical.exe,$^); do echo $$i; ./$$i || exit 1; echo; done
+	./test/asan/practical.exe normal
+	! ./test/asan/practical.exe overflow
+	! ./test/asan/practical.exe underflow
+	! ./test/asan/practical.exe uaf
+	! ./test/asan/practical.exe double-free
 
 test-all: test test-stage2
 
