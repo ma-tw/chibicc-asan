@@ -37,7 +37,12 @@ test/asan/%.exe: chibicc test/asan/%.c $(ASAN_LIB)
 	  -Wl,-rpath,'$$ORIGIN/../../helper' -xc test/common
 
 test-asan: $(ASAN_TESTS)
-	for i in $^; do echo $$i; LD_PRELOAD=./helper/libasan.so ./$$i || exit 1; echo; done
+	for i in $(filter-out test/asan/practical.exe,$^); do echo $$i; LD_PRELOAD=./helper/libasan.so ./$$i || exit 1; echo; done
+	LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe normal
+	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe overflow
+	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe underflow
+	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe uaf
+	! LD_PRELOAD=./helper/libasan.so ./test/asan/practical.exe double-free
 
 test-all: test test-stage2
 
