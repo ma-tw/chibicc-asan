@@ -1,36 +1,32 @@
 #include "asan.h"
 
-static int __asan_cmp(__asan_node_t *a, __asan_node_t *b) {
-  return (a->key->raw_begin > b->key->raw_begin) - (a->key->raw_begin < b->key->raw_begin);
+static int __asan_cmp(__asan_metadatum_t *a, __asan_metadatum_t *b) {
+  return (a->raw_begin > b->raw_begin) - (a->raw_begin < b->raw_begin);
 }
 
-RB_HEAD(__asan_tree, __asan_node) __asan_head = RB_INITIALIZER(&__asan_head);
-RB_PROTOTYPE(__asan_tree, __asan_node, entry, __asan_cmp);
-RB_GENERATE(__asan_tree, __asan_node, entry, __asan_cmp);
+RB_HEAD(__asan_tree, __asan_metadatum) __asan_head = RB_INITIALIZER(&__asan_head);
+RB_PROTOTYPE(__asan_tree, __asan_metadatum, entry, __asan_cmp);
+RB_GENERATE(__asan_tree, __asan_metadatum, entry, __asan_cmp);
 
 static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
   if (RB_EMPTY(&__asan_head)) {
     return NULL;
   }
-  __asan_node_t find, *res_node;
-  find.key = malloc(sizeof(__asan_metadatum_t));
-  find.key->raw_begin = ptr;
+  __asan_metadatum_t find, *res_node;
+  find.raw_begin = ptr;
   res_node = RB_NFIND(__asan_tree, &__asan_head, &find);  // lower_bound に相当
-
-  free(find.key);
 
   __asan_metadatum_t *ret;
   if (res_node == NULL) {
     // 最大要素が答え
-    ret = RB_MAX(__asan_tree, &__asan_head)->key;
-  } else if (res_node->key->raw_begin == ptr) {
+    ret = RB_MAX(__asan_tree, &__asan_head);
+  } else if (res_node->raw_begin == ptr) {
     // ptr 自身が先頭
-    ret = res_node->key;
+    ret = res_node;
   } else {
-    __asan_node_t *prev = RB_PREV(__asan_tree, &__asan_head, res_node);
-    if (prev == NULL)
+    ret = RB_PREV(__asan_tree, &__asan_head, res_node);
+    if (ret == NULL)
       return NULL;
-    ret = prev->key;
   }
 
   if (ptr < ret->raw_begin || ptr >= ret->raw_begin + __ASAN_REDZONE_SIZE + ret->size + __ASAN_REDZONE_SIZE) {
@@ -84,18 +80,23 @@ void *asan_malloc(size_t size) {
   __asan_metadatum_t *metadatum = malloc(sizeof(__asan_metadatum_t));
   metadatum->raw_begin = mem;
   metadatum->size = size;
+  metadatum->frame_count_free = 0;
+  metadatum->trace_head = 0;
+  metadatum->trace_count = 0;
+  metadatum->is_freed = false;
   int frame_count = backtrace(metadatum->frames_alloc, __ASAN_MAX_FRAMES);
   metadatum->frame_count_alloc = frame_count;
 
   void *ret = mem + __ASAN_REDZONE_SIZE;
   metadatum->begin = ret;
 
-  __asan_node_t *node = malloc(sizeof(__asan_node_t));
-  node->key = metadatum;
-  RB_INSERT(__asan_tree, &__asan_head, node);
+  RB_INSERT(__asan_tree, &__asan_head, metadatum);
 
   return ret;
 }
+
+__asan_metadatum_t *__asan_quarantine[__ASAN_QUAR_SIZE];
+int __asan_quar_head;
 
 void asan_free(void *ptr) {
   if (ptr == NULL)
@@ -110,6 +111,16 @@ void asan_free(void *ptr) {
   int frame_count = backtrace(metadatum->frames_free, __ASAN_MAX_FRAMES);
   metadatum->frame_count_free = frame_count;
   metadatum->is_freed = true;
+
+  __asan_metadatum_t *tail = __asan_quarantine[__asan_quar_head];
+  if (tail != NULL) {
+    fprintf(stderr, "%p is actually freed\n", tail->begin);
+    RB_REMOVE(__asan_tree, &__asan_head, tail);
+    free(tail->raw_begin);
+    free(tail);
+  }
+  __asan_quarantine[__asan_quar_head] = metadatum;
+  __asan_quar_head = (__asan_quar_head + 1) % __ASAN_QUAR_SIZE;
 }
 
 void __trace_dereference(void *addr) {

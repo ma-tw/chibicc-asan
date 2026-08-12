@@ -14,11 +14,13 @@
 #define __ASAN_MAX_FRAMES 64
 #define __ASAN_MAX_TRACES 64
 #define __ASAN_REDZONE_SIZE 64
+#define __ASAN_QUAR_SIZE 16
 
 #define PUTS_STDERR(s) write(STDERR_FILENO, (s "\n"), sizeof(s "\n") - 1)
 #define DIV_CEIL(x, y) (((x) + (y) - 1) / (y))
 
 typedef struct __asan_metadatum {
+  RB_ENTRY(__asan_metadatum) entry;
   void *raw_begin;            // redzoneも含む
   void *begin;                // 有効アドレスの先頭
   int size;
@@ -30,11 +32,6 @@ typedef struct __asan_metadatum {
   int trace_head, trace_count;
   bool is_freed;
 } __asan_metadatum_t;
-
-typedef struct __asan_node {
-  RB_ENTRY(__asan_node) entry;
-  __asan_metadatum_t *key;
-} __asan_node_t;
 
 typedef enum {
   __AT_UAF,
