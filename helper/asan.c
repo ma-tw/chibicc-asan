@@ -1,12 +1,12 @@
 #include "asan.h"
 
-static int __asan_cmp(__asan_metadatum_t *a, __asan_metadatum_t *b) {
+static int asan_cmp(__asan_metadatum_t *a, __asan_metadatum_t *b) {
   return (a->raw_begin > b->raw_begin) - (a->raw_begin < b->raw_begin);
 }
 
 RB_HEAD(__asan_tree, __asan_metadatum) __asan_head = RB_INITIALIZER(&__asan_head);
-RB_PROTOTYPE(__asan_tree, __asan_metadatum, entry, __asan_cmp);
-RB_GENERATE(__asan_tree, __asan_metadatum, entry, __asan_cmp);
+RB_PROTOTYPE(__asan_tree, __asan_metadatum, entry, asan_cmp);
+RB_GENERATE(__asan_tree, __asan_metadatum, entry, asan_cmp);
 
 static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
   if (RB_EMPTY(&__asan_head)) {
@@ -71,7 +71,7 @@ static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t
   exit(1);
 }
 
-void *asan_malloc(size_t size) {
+void *__asan_malloc(size_t size) {
   void *mem = malloc(__ASAN_REDZONE_SIZE + size + __ASAN_REDZONE_SIZE);
   if (mem == NULL) {
     perror("malloc");
@@ -98,7 +98,7 @@ void *asan_malloc(size_t size) {
 __asan_metadatum_t *__asan_quarantine[__ASAN_QUAR_SIZE];
 int __asan_quar_head;
 
-void asan_free(void *ptr) {
+void __asan_free(void *ptr) {
   if (ptr == NULL)
     return;
 

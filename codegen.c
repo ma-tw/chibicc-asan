@@ -96,9 +96,9 @@ static void gen_addr(Node *node) {
     char *name = node->var->name;
     if (opt_fsanitize_address && node->ty->kind == TY_FUNC) {
       if (!strcmp(name, "malloc"))
-        name = "asan_malloc";
+        name = "__asan_malloc";
       else if (!strcmp(name, "free"))
-        name = "asan_free";
+        name = "__asan_free";
     }
 
     if (opt_fpic) {

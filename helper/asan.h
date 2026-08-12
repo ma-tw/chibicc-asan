@@ -40,9 +40,9 @@ typedef enum {
   __AT_DF,
 } __asan_type_t;
 
-void *asan_malloc(size_t size);
+void *__asan_malloc(size_t size);
 
-void asan_free(void *ptr);
+void __asan_free(void *ptr);
 
 void __trace_dereference(void *addr);
 
