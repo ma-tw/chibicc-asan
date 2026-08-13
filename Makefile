@@ -47,6 +47,7 @@ test-asan: $(ASAN_TESTS)
 	! ./test/asan/practical.exe global-bss-overflow
 	! ./test/asan/practical.exe uaf
 	! ./test/asan/practical.exe double-free
+	! ./test/asan/practical.exe invalid-free
 
 test-all: test test-stage2
 

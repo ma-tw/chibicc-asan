@@ -107,11 +107,16 @@ static void double_free(void)
     free(buf);
 }
 
+static void invalid_free(void)
+{
+    free(global_buf);
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr,
-                "usage: %s normal|overflow|underflow|partial-overflow|global-overflow|global-underflow|global-bss-overflow|uaf|double-free\n",
+                "usage: %s normal|overflow|underflow|partial-overflow|global-overflow|global-underflow|global-bss-overflow|uaf|double-free|invalid-free\n",
                 argv[0]);
         return 1;
     }
@@ -134,6 +139,8 @@ int main(int argc, char **argv)
         use_after_free();
     else if (strcmp(argv[1], "double-free") == 0)
         double_free();
+    else if (strcmp(argv[1], "invalid-free") == 0)
+        invalid_free();
     else {
         fprintf(stderr, "unknown test: %s\n", argv[1]);
         return 1;
