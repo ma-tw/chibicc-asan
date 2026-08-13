@@ -1,4 +1,5 @@
 #include "chibicc.h"
+#include "asan_config.h"
 
 #define GP_MAX 6
 #define FP_MAX 8
@@ -13,6 +14,11 @@ static Obj *current_fn;
 
 static void gen_expr(Node *node);
 static void gen_stmt(Node *node);
+
+static bool is_asan_global(Obj *var) {
+  return opt_fsanitize_address && !var->is_function && var->is_definition &&
+         !var->is_tls;
+}
 
 __attribute__((format(printf, 1, 2)))
 static void println(char *fmt, ...) {
@@ -1405,6 +1411,8 @@ static void assign_lvar_offsets(Obj *prog) {
 }
 
 static void emit_data(Obj *prog) {
+  int asan_id = 0;
+
   for (Obj *var = prog; var; var = var->next) {
     if (var->is_function || !var->is_definition)
       continue;
@@ -1418,9 +1426,14 @@ static void emit_data(Obj *prog) {
       ? MAX(16, var->align) : var->align;
 
     // Common symbol
-    if (opt_fcommon && var->is_tentative) {
+    if (opt_fcommon && var->is_tentative && !opt_fsanitize_address) {
       println("  .comm %s, %d, %d", var->name, var->ty->size, align);
       continue;
+    }
+
+    if (is_asan_global(var)) {
+      var->asan_id = ++asan_id;
+      var->asan_left_redzone_size = align_to(__ASAN_REDZONE_SIZE, align);
     }
 
     // .data or .tdata
@@ -1433,6 +1446,10 @@ static void emit_data(Obj *prog) {
       println("  .type %s, @object", var->name);
       println("  .size %s, %d", var->name, var->ty->size);
       println("  .align %d", align);
+      if (var->asan_id) {
+        println(".L.asan.raw.%d:", var->asan_id);
+        println("  .zero %d", var->asan_left_redzone_size);
+      }
       println("%s:", var->name);
 
       Relocation *rel = var->rel;
@@ -1446,6 +1463,8 @@ static void emit_data(Obj *prog) {
           println("  .byte %d", var->init_data[pos++]);
         }
       }
+      if (var->asan_id)
+        println("  .zero %d", __ASAN_REDZONE_SIZE);
       continue;
     }
 
@@ -1456,9 +1475,64 @@ static void emit_data(Obj *prog) {
       println("  .bss");
 
     println("  .align %d", align);
+    if (var->asan_id) {
+      println(".L.asan.raw.%d:", var->asan_id);
+      println("  .zero %d", var->asan_left_redzone_size);
+    }
     println("%s:", var->name);
     println("  .zero %d", var->ty->size);
+    if (var->asan_id)
+      println("  .zero %d", __ASAN_REDZONE_SIZE);
   }
+}
+
+static void emit_asan_global_init(Obj *prog) {
+  bool has_globals = false;
+  for (Obj *var = prog; var; var = var->next)
+    if (var->asan_id)
+      has_globals = true;
+
+  if (!has_globals)
+    return;
+
+  println("  .section .rodata");
+  for (Obj *var = prog; var; var = var->next) {
+    if (!var->asan_id)
+      continue;
+    println(".L.asan.name.%d:", var->asan_id);
+    println("  .string \"%s\"", var->name);
+  }
+
+  println("  .text");
+  println("  .type .L.asan.init, @function");
+  println(".L.asan.init:");
+  println("  push %%rbp");
+  println("  mov %%rsp, %%rbp");
+
+  for (Obj *var = prog; var; var = var->next) {
+    if (!var->asan_id)
+      continue;
+
+    if (opt_fpic && !var->is_static) {
+      println("  mov %s@GOTPCREL(%%rip), %%rsi", var->name);
+      println("  lea -%d(%%rsi), %%rdi", var->asan_left_redzone_size);
+    } else {
+      println("  lea .L.asan.raw.%d(%%rip), %%rdi", var->asan_id);
+      println("  lea %s(%%rip), %%rsi", var->name);
+    }
+    println("  mov $%d, %%rdx", var->ty->size);
+    println("  mov $%d, %%rcx", var->asan_left_redzone_size +
+            var->ty->size + __ASAN_REDZONE_SIZE);
+    println("  lea .L.asan.name.%d(%%rip), %%r8", var->asan_id);
+    println("  call __asan_register_global@PLT");
+  }
+
+  println("  pop %%rbp");
+  println("  ret");
+  println("  .size .L.asan.init, .-.L.asan.init");
+  println("  .section .init_array,\"aw\",@init_array");
+  println("  .align 8");
+  println("  .quad .L.asan.init");
 }
 
 static void store_fp(int r, int offset, int sz) {
@@ -1626,5 +1700,6 @@ void codegen(Obj *prog, FILE *out) {
 
   assign_lvar_offsets(prog);
   emit_data(prog);
+  emit_asan_global_init(prog);
   emit_text(prog);
 }

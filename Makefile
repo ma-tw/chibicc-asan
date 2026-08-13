@@ -17,8 +17,9 @@ chibicc: $(OBJS) $(ASAN_LIB)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 $(OBJS): chibicc.h
+codegen.o: asan_config.h
 
-$(ASAN_LIB): helper/asan.c helper/asan.h
+$(ASAN_LIB): helper/asan.c helper/asan.h asan_config.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -fPIC -shared -Iinclude -o $@ $<
 
 asan: $(ASAN_LIB)
@@ -41,6 +42,9 @@ test-asan: $(ASAN_TESTS)
 	! ./test/asan/practical.exe overflow
 	! ./test/asan/practical.exe underflow
 	! ./test/asan/practical.exe partial-overflow
+	! ./test/asan/practical.exe global-overflow
+	! ./test/asan/practical.exe global-underflow
+	! ./test/asan/practical.exe global-bss-overflow
 	! ./test/asan/practical.exe uaf
 	! ./test/asan/practical.exe double-free
 

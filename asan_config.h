@@ -1,0 +1,6 @@
+#ifndef CHIBICC_ASAN_CONFIG_H
+#define CHIBICC_ASAN_CONFIG_H
+
+#define __ASAN_REDZONE_SIZE 64
+
+#endif

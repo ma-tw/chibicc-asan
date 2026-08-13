@@ -145,6 +145,8 @@ struct Obj {
   bool is_tls;
   char *init_data;
   Relocation *rel;
+  int asan_id;
+  int asan_left_redzone_size;
 
   // Function
   bool is_inline;

@@ -29,7 +29,7 @@ static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
       return NULL;
   }
 
-  if (ptr < ret->raw_begin || ptr >= ret->raw_begin + __ASAN_REDZONE_SIZE + ret->size + __ASAN_REDZONE_SIZE) {
+  if (ptr < ret->raw_begin || ptr >= ret->raw_begin + ret->raw_size) {
     return NULL;
   }
 
@@ -44,10 +44,16 @@ static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t
     PUTS_STDERR("use-after-free");
     break;
   case __AT_BOF:
-    PUTS_STDERR("heap-buffer-overflow");
+    if (metadatum->region_kind == __ASAN_REGION_GLOBAL)
+      PUTS_STDERR("global-buffer-overflow");
+    else
+      PUTS_STDERR("heap-buffer-overflow");
     break;
   case __AT_BUF:
-    PUTS_STDERR("heap-buffer-underflow");
+    if (metadatum->region_kind == __ASAN_REGION_GLOBAL)
+      PUTS_STDERR("global-buffer-underflow");
+    else
+      PUTS_STDERR("heap-buffer-underflow");
     break;
   case __AT_DF:
     PUTS_STDERR("double-free");
@@ -55,8 +61,13 @@ static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t
   default:
     abort();
   }
-  PUTS_STDERR("-------- allocated at: --------");
-  backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc, STDERR_FILENO);
+  if (metadatum->region_kind == __ASAN_REGION_GLOBAL) {
+    fprintf(stderr, "global variable: %s\n", metadatum->name);
+  } else {
+    PUTS_STDERR("-------- allocated at: --------");
+    backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc,
+                         STDERR_FILENO);
+  }
 
   if (metadatum->is_freed) {
     PUTS_STDERR("-------- freed at: --------");
@@ -66,7 +77,9 @@ static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t
   PUTS_STDERR("-------- traces: --------");
   int traces_start = (metadatum->trace_head + __ASAN_MAX_TRACES - metadatum->trace_count) % __ASAN_MAX_TRACES;
   for (int i = 0; i < metadatum->trace_count; i++) {
-    fprintf(stderr, "ptr + %ld\n", metadatum->traces[(traces_start + i) % __ASAN_MAX_TRACES] - metadatum->begin);
+    fprintf(stderr, "ptr + %ld\n",
+            metadatum->traces[(traces_start + i) % __ASAN_MAX_TRACES] -
+            metadatum->begin);
   }
   exit(1);
 }
@@ -77,13 +90,11 @@ void *__asan_malloc(size_t size) {
     perror("malloc");
   }
 
-  __asan_metadatum_t *metadatum = malloc(sizeof(__asan_metadatum_t));
+  __asan_metadatum_t *metadatum = calloc(1, sizeof(__asan_metadatum_t));
   metadatum->raw_begin = mem;
   metadatum->size = size;
-  metadatum->frame_count_free = 0;
-  metadatum->trace_head = 0;
-  metadatum->trace_count = 0;
-  metadatum->is_freed = false;
+  metadatum->raw_size = __ASAN_REDZONE_SIZE + size + __ASAN_REDZONE_SIZE;
+  metadatum->region_kind = __ASAN_REGION_HEAP;
   int frame_count = backtrace(metadatum->frames_alloc, __ASAN_MAX_FRAMES);
   metadatum->frame_count_alloc = frame_count;
 
@@ -95,6 +106,24 @@ void *__asan_malloc(size_t size) {
   return ret;
 }
 
+void __asan_register_global(void *raw_begin, void *begin, size_t size,
+                            size_t raw_size, const char *name) {
+  __asan_metadatum_t *metadatum = calloc(1, sizeof(__asan_metadatum_t));
+  if (metadatum == NULL) {
+    perror("calloc");
+    exit(1);
+  }
+
+  metadatum->raw_begin = raw_begin;
+  metadatum->begin = begin;
+  metadatum->size = size;
+  metadatum->raw_size = raw_size;
+  metadatum->region_kind = __ASAN_REGION_GLOBAL;
+  metadatum->name = name;
+
+  RB_INSERT(__asan_tree, &__asan_head, metadatum);
+}
+
 __asan_metadatum_t *__asan_quarantine[__ASAN_QUAR_SIZE];
 int __asan_quar_head;
 
@@ -103,6 +132,14 @@ void __asan_free(void *ptr) {
     return;
 
   __asan_metadatum_t *metadatum = find_asan_metadatum(ptr);
+
+  if (metadatum == NULL || metadatum->region_kind != __ASAN_REGION_HEAP) {
+    PUTS_STDERR("======== [chibicc-ASan] ========");
+    PUTS_STDERR("invalid-free");
+    if (metadatum && metadatum->name)
+      fprintf(stderr, "global variable: %s\n", metadatum->name);
+    exit(1);
+  }
 
   if (metadatum->is_freed) {
     show_asan_info_and_exit(metadatum, __AT_DF);

@@ -7,6 +7,9 @@ struct message {
     char *data;
 };
 
+static char global_buf[5] = {1};
+static char global_bss[5];
+
 static struct message *message_create(const char *text)
 {
     struct message *msg = malloc(sizeof(*msg));
@@ -67,6 +70,24 @@ static void partial_overflow(void)
     *p = 1;
 }
 
+static void global_overflow(void)
+{
+    volatile char *p = global_buf;
+    p[5] = 'X';
+}
+
+static void global_underflow(void)
+{
+    volatile char *p = global_buf;
+    p[-1] = 'X';
+}
+
+static void global_bss_overflow(void)
+{
+    volatile char *p = global_bss;
+    p[5] = 'X';
+}
+
 static void use_after_free(void)
 {
     struct message *msg = message_create("hello");
@@ -90,7 +111,7 @@ int main(int argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr,
-                "usage: %s normal|overflow|underflow|partial-overflow|uaf|double-free\n",
+                "usage: %s normal|overflow|underflow|partial-overflow|global-overflow|global-underflow|global-bss-overflow|uaf|double-free\n",
                 argv[0]);
         return 1;
     }
@@ -103,6 +124,12 @@ int main(int argc, char **argv)
         underflow();
     else if (strcmp(argv[1], "partial-overflow") == 0)
         partial_overflow();
+    else if (strcmp(argv[1], "global-overflow") == 0)
+        global_overflow();
+    else if (strcmp(argv[1], "global-underflow") == 0)
+        global_underflow();
+    else if (strcmp(argv[1], "global-bss-overflow") == 0)
+        global_bss_overflow();
     else if (strcmp(argv[1], "uaf") == 0)
         use_after_free();
     else if (strcmp(argv[1], "double-free") == 0)
