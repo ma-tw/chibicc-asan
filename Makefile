@@ -43,6 +43,11 @@ test-asan: $(ASAN_TESTS)
 	! ./test/asan/practical.exe partial-overflow
 	! ./test/asan/practical.exe uaf
 	! ./test/asan/practical.exe double-free
+	! ./test/asan/practical.exe overflow 2>tmp-asan-diagram
+	printf '\033[31m| RZ \033[0m|' | grep -Ff - tmp-asan-diagram
+	grep -F '^ accessed here' tmp-asan-diagram
+	! ./test/asan/practical.exe uaf 2>tmp-asan-diagram
+	printf '\033[36m|       6 Bytes (freed)        |\033[0m' | grep -Ff - tmp-asan-diagram
 
 test-all: test test-stage2
 

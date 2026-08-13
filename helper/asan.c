@@ -1,4 +1,5 @@
 #include "asan.h"
+#include <string.h>
 
 static int asan_cmp(__asan_metadatum_t *a, __asan_metadatum_t *b) {
   return (a->raw_begin > b->raw_begin) - (a->raw_begin < b->raw_begin);
@@ -37,7 +38,8 @@ static __asan_metadatum_t *find_asan_metadatum(void *ptr) {
 }
 
 __attribute__((noreturn))
-static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t type) {
+static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t type,
+                                    void *accessed) {
   PUTS_STDERR("======== [chibicc-ASan] ========");
   switch (type) {
   case __AT_UAF:
@@ -55,6 +57,58 @@ static void show_asan_info_and_exit(__asan_metadatum_t *metadatum, __asan_type_t
   default:
     abort();
   }
+
+  enum { RZ_WIDTH = 4, MEMORY_WIDTH = 30 };
+  int accessed_pos;
+  if (accessed < metadatum->begin) {
+    accessed_pos = (char *)accessed - (char *)metadatum->raw_begin;
+    accessed_pos = accessed_pos * (RZ_WIDTH + 1) / __ASAN_REDZONE_SIZE;
+  } else if (accessed < metadatum->begin + metadatum->size) {
+    accessed_pos = RZ_WIDTH + 1;
+    if (metadatum->size != 0)
+      accessed_pos += ((char *)accessed - (char *)metadatum->begin) *
+                      (MEMORY_WIDTH + 1) / metadatum->size;
+  } else {
+    accessed_pos = RZ_WIDTH + MEMORY_WIDTH + 2;
+    accessed_pos += ((char *)accessed -
+                     ((char *)metadatum->begin + metadatum->size)) *
+                    (RZ_WIDTH + 1) / __ASAN_REDZONE_SIZE;
+  }
+
+  PUTS_STDERR("-------- memory: --------");
+  char size_label[32];
+  int size_label_len = snprintf(size_label, sizeof(size_label),
+                                metadatum->is_freed ? "%d Bytes (freed)" : "%d Bytes",
+                                metadatum->size);
+  int left_padding = (MEMORY_WIDTH - size_label_len) / 2;
+  int right_padding = MEMORY_WIDTH - size_label_len - left_padding;
+  char *memory_color = metadatum->is_freed ? "\033[36m" : "";
+  char *memory_reset = metadatum->is_freed ? "\033[0m" : "";
+  fprintf(stderr, "\033[31m+----\033[0m%s+------------------------------%s"
+                  "\033[31m+----+\033[0m\n",
+          memory_color, memory_reset);
+  fprintf(stderr, "\033[31m| RZ \033[0m%s|%*s%s%*s%s"
+                  "\033[31m| RZ |\033[0m\n",
+          memory_color, left_padding, "", size_label, right_padding, "",
+          memory_reset);
+  fprintf(stderr, "\033[31m+----\033[0m%s+------------------------------%s"
+                  "\033[31m+----+\033[0m\n",
+          memory_color, memory_reset);
+
+  char labels[64];
+  memset(labels, ' ', sizeof(labels));
+  labels[sizeof(labels) - 1] = '\0';
+  memcpy(labels + RZ_WIDTH + 1, "^ ptr", 5);
+  if (accessed_pos >= RZ_WIDTH + 7) {
+    memcpy(labels + accessed_pos, "^ accessed here", 15);
+    labels[accessed_pos + 15] = '\0';
+    fprintf(stderr, "%s\n", labels);
+  } else {
+    labels[RZ_WIDTH + 6] = '\0';
+    fprintf(stderr, "%s\n", labels);
+    fprintf(stderr, "%*s^ accessed here\n", accessed_pos, "");
+  }
+
   PUTS_STDERR("-------- allocated at: --------");
   backtrace_symbols_fd(metadatum->frames_alloc, metadatum->frame_count_alloc, STDERR_FILENO);
 
@@ -105,7 +159,7 @@ void __asan_free(void *ptr) {
   __asan_metadatum_t *metadatum = find_asan_metadatum(ptr);
 
   if (metadatum->is_freed) {
-    show_asan_info_and_exit(metadatum, __AT_DF);
+    show_asan_info_and_exit(metadatum, __AT_DF, ptr);
   }
 
   int frame_count = backtrace(metadatum->frames_free, __ASAN_MAX_FRAMES);
@@ -134,16 +188,16 @@ void __asan_check(void *addr, size_t access_size) {
     }
 
     if (metadatum->is_freed) {
-      show_asan_info_and_exit(metadatum, __AT_UAF);
+      show_asan_info_and_exit(metadatum, __AT_UAF, addr);
     }
 
     if (addr < metadatum->begin) {
-      show_asan_info_and_exit(metadatum, __AT_BUF);
+      show_asan_info_and_exit(metadatum, __AT_BUF, addr);
     }
 
     size_t offset = addr - metadatum->begin;
     if (offset >= metadatum->size || access_size > metadatum->size - offset) {
-      show_asan_info_and_exit(metadatum, __AT_BOF);
+      show_asan_info_and_exit(metadatum, __AT_BOF, addr);
     }
   }
 }
